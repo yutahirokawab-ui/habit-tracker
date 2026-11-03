@@ -126,6 +126,17 @@
   .g-result.ng { color: var(--danger); }
   .g-auto { margin-top: 4px; font-size: 13px; }
   #review-score { font-weight: 700; margin: 0 0 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .chip {
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
   .field-label { display: block; font-size: 14px; color: var(--muted); margin: 14px 0 4px; }
   textarea {
     width: 100%;
@@ -304,6 +315,7 @@
         <button class="btn ghost small" id="edit-toggle">並べ替え・削除</button>
       </div>
     </div>
+    <div class="chips" id="goal-filter"></div>
     <div id="habit-list"></div>
     <form id="add-form" class="row" style="margin-top: 12px;">
       <input type="text" id="new-name" maxlength="40" placeholder="新しい習慣を追加（例: 読書）" style="flex: 1 1 100%;">
@@ -317,7 +329,8 @@
     <h2 id="todo-title">今日のToDo</h2>
     <div id="todo-list"></div>
     <form id="todo-form" class="row" style="margin-top: 12px; flex-wrap: nowrap; min-width: 0;">
-      <input type="text" id="todo-name" maxlength="60" placeholder="やることを追加（例: 病院に電話）">
+      <input type="text" id="todo-name" maxlength="60" placeholder="やることを追加">
+      <select id="todo-goal" class="sel" aria-label="関連する目標" style="flex: none; width: 110px;"></select>
       <button class="btn" type="submit" style="flex: none;">追加</button>
     </form>
     <p class="muted" style="margin: 10px 0 0;">ToDoはその日だけのタスクです。達成率には含まれません。</p>
@@ -413,6 +426,8 @@
   // タイマー: { habitId, name, key, endAt（動作中の終了時刻）, remainMs（一時停止中の残り時間） }
   let timer = loadTimer();
   let audioCtx = null;
+  // 目標で絞り込み中の目標ID（"all" はすべて）
+  let goalFilter = "all";
 
   function load() {
     let s = null;
@@ -570,13 +585,18 @@
     list.className = editing ? "editing" : "";
     list.innerHTML = "";
 
+    const visible = visibleHabits();
     if (total === 0) {
       list.innerHTML = `<div class="empty">まだ習慣がありません。下から追加してください。</div>`;
       return;
     }
+    if (visible.length === 0) {
+      list.innerHTML = `<div class="empty">この目標の習慣はまだありません。</div>`;
+      return;
+    }
 
     const rec = state.records[key] || {};
-    state.habits.forEach((h, i) => {
+    visible.forEach((h, i) => {
       const row = document.createElement("div");
       row.className = "habit" + (rec[h.id] ? " done" : "");
 
@@ -601,8 +621,8 @@
         const tools = document.createElement("span");
         tools.className = "edit-tools";
         tools.append(
-          miniButton("▲", i === 0, () => move(i, -1)),
-          miniButton("▼", i === total - 1, () => move(i, 1)),
+          miniButton("▲", i === 0, () => moveHabit(h.id, -1)),
+          miniButton("▼", i === visible.length - 1, () => moveHabit(h.id, 1)),
           miniButton("⏱", false, () => setMinutes(h.id)),
           miniButton("🎯", false, () => setGoal(h.id)),
           miniButton("✕", false, () => remove(h.id), "del")
@@ -628,7 +648,7 @@
   // ---------- 描画: ToDo ----------
   function renderTodos() {
     const key = selectedKey;
-    const todos = state.todos[key] || [];
+    const todos = (state.todos[key] || []).filter(t => goalFilter === "all" || t.goalId === goalFilter);
     document.getElementById("todo-title").textContent = key === todayKey() ? "今日のToDo" : "この日のToDo";
 
     const list = document.getElementById("todo-list");
@@ -648,6 +668,14 @@
       const name = document.createElement("span");
       name.className = "name";
       name.textContent = t.name;
+
+      const goal = state.goals.find(g => g.id === t.goalId);
+      if (goal) {
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = `🎯 ${goal.title}`;
+        name.append(tag);
+      }
 
       row.append(check, name, miniButton("✕", false, () => removeTodo(t.id), "del"));
       row.addEventListener("click", () => toggleTodo(t.id));
@@ -686,22 +714,61 @@
     });
   }
 
-  // 目標の選択肢（習慣の追加欄）を、今年の目標で作り直す
+  // 目標の選択肢（習慣の追加欄・ToDoの追加欄）を、今年の目標で作り直す
   function renderGoalOptions() {
-    const select = document.getElementById("new-goal");
-    const prev = select.value;
-    select.innerHTML = "";
-    const none = document.createElement("option");
-    none.value = "";
-    none.textContent = "目標なし";
-    select.append(none);
-    currentGoals().forEach(g => {
-      const opt = document.createElement("option");
-      opt.value = g.id;
-      opt.textContent = g.title;
-      select.append(opt);
+    ["new-goal", "todo-goal"].forEach(id => {
+      const select = document.getElementById(id);
+      const prev = select.value;
+      select.innerHTML = "";
+      const none = document.createElement("option");
+      none.value = "";
+      none.textContent = "目標なし";
+      select.append(none);
+      currentGoals().forEach(g => {
+        const opt = document.createElement("option");
+        opt.value = g.id;
+        opt.textContent = g.title;
+        select.append(opt);
+      });
+      select.value = prev;
     });
-    select.value = prev;
+  }
+
+  // 目標で絞り込むボタン（すべて / 目標ごと）
+  function renderGoalFilter() {
+    const goals = currentGoals();
+    if (goalFilter !== "all" && !goals.some(g => g.id === goalFilter)) goalFilter = "all";
+    const box = document.getElementById("goal-filter");
+    box.innerHTML = "";
+    [{ id: "all", title: "すべて" }, ...goals].forEach(g => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip" + (goalFilter === g.id ? " on" : "");
+      b.textContent = g.title;
+      b.addEventListener("click", () => {
+        goalFilter = g.id;
+        render();
+      });
+      box.append(b);
+    });
+  }
+
+  // 絞り込み中の習慣（「すべて」のときは全部）
+  function visibleHabits() {
+    return state.habits.filter(h => goalFilter === "all" || h.goalId === goalFilter);
+  }
+
+  // 表示中の一覧の中で、習慣の順番を入れ替える
+  function moveHabit(id, dir) {
+    const visible = visibleHabits();
+    const i = visible.findIndex(h => h.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= visible.length) return;
+    const a = state.habits.indexOf(visible[i]);
+    const b = state.habits.indexOf(visible[j]);
+    [state.habits[a], state.habits[b]] = [state.habits[b], state.habits[a]];
+    save();
+    render();
   }
 
   // ---------- 描画: 達成率の推移 ----------
@@ -1100,14 +1167,6 @@
     render();
   }
 
-  function move(index, dir) {
-    const target = index + dir;
-    if (target < 0 || target >= state.habits.length) return;
-    [state.habits[index], state.habits[target]] = [state.habits[target], state.habits[index]];
-    save();
-    render();
-  }
-
   function remove(id) {
     const h = state.habits.find(x => x.id === id);
     if (!h || !confirm(`「${h.name}」を削除しますか？過去の記録からも消えます。`)) return;
@@ -1169,6 +1228,10 @@
     state.habits.forEach(h => {
       if (h.goalId === id) delete h.goalId;
     });
+    Object.values(state.todos).forEach(list => list.forEach(t => {
+      if (t.goalId === id) delete t.goalId;
+    }));
+    if (goalFilter === id) goalFilter = "all";
     save();
     render();
   }
@@ -1191,6 +1254,7 @@
   function render() {
     renderCalendar();
     renderGoals();
+    renderGoalFilter();
     renderGoalOptions();
     renderToday();
     renderTodos();
@@ -1238,8 +1302,12 @@
     const name = input.value.trim();
     if (!name) return;
     state.todos[selectedKey] = state.todos[selectedKey] || [];
-    state.todos[selectedKey].push({ id: uid(), name, done: false });
+    const goalSelect = document.getElementById("todo-goal");
+    const todo = { id: uid(), name, done: false };
+    if (goalSelect.value) todo.goalId = goalSelect.value;
+    state.todos[selectedKey].push(todo);
     input.value = "";
+    goalSelect.value = "";
     save();
     render();
   });
