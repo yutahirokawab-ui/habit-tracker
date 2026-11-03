@@ -118,6 +118,14 @@
     font-size: 22px; line-height: 1; color: var(--line); cursor: pointer;
   }
   .stars button.on { color: var(--star); }
+  .metric { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: 14px; color: var(--muted); }
+  .metric .num-input { width: 76px; padding: 8px; }
+  .metric .g-unit { width: 56px; }
+  .g-result { margin-top: 10px; font-weight: 700; }
+  .g-result.ok { color: var(--done); }
+  .g-result.ng { color: var(--danger); }
+  .g-auto { margin-top: 4px; font-size: 13px; }
+  #review-score { font-weight: 700; margin: 0 0 4px; }
   .field-label { display: block; font-size: 14px; color: var(--muted); margin: 14px 0 4px; }
   textarea {
     width: 100%;
@@ -345,7 +353,8 @@
     </div>
     <div class="chart-box" id="review-chart"></div>
 
-    <h2 style="margin-top: 16px;">目標の振り返り</h2>
+    <h2 style="margin-top: 16px;">目標と実績</h2>
+    <p id="review-score"></p>
     <div id="review-goals"></div>
 
     <label class="field-label" for="rv-good">この期間に良かったこと</label>
@@ -489,17 +498,47 @@
     return rate > 0 ? 1 : 0;
   }
 
-  // 目標に関連する習慣の、記録のある日の平均達成率（関連する習慣がなければ null）
-  function goalRateFor(goalId, keys) {
+  // 関連する習慣を期間内に完了した回数（習慣ごとの完了日数の合計）。関連する習慣がなければ null
+  function completionsFor(goalId, keys) {
     const habits = state.habits.filter(h => h.goalId === goalId);
     if (habits.length === 0) return null;
-    const days = keys.filter(hasRecord);
-    if (days.length === 0) return 0;
-    const sum = days.reduce((a, k) => {
+    let count = 0;
+    keys.forEach(k => {
       const rec = state.records[k] || {};
-      return a + habits.filter(h => rec[h.id]).length / habits.length;
-    }, 0);
-    return Math.round((sum / days.length) * 100);
+      habits.forEach(h => { if (rec[h.id]) count++; });
+    });
+    return count;
+  }
+
+  // 目標の数値。実績は手入力、なければ関連する習慣の完了回数を使う。
+  // 「減らす」目標（体重など）は、目標値以下で達成。開始値を入れると、開始から目標までの進み具合（%）を出す。
+  function goalResult(goal, keys) {
+    const rv = state.reviews[reviewKey()] || {};
+    const m = (rv.metrics || {})[goal.id] || {};
+    const autoCount = completionsFor(goal.id, keys);
+    const manual = m.actual !== undefined && m.actual !== "";
+    const actual = manual ? Number(m.actual) : autoCount;
+    const hasTarget = m.target !== undefined && m.target !== "";
+    const target = Number(m.target);
+    const hasStart = m.start !== undefined && m.start !== "";
+    const start = Number(m.start);
+    const down = m.direction === "down";
+
+    const ok = hasTarget && actual !== null ? (down ? actual <= target : actual >= target) : null;
+
+    let pct = null;
+    if (hasTarget && actual !== null) {
+      if (hasStart) {
+        pct = target === start ? (ok ? 100 : 0) : Math.round(((actual - start) / (target - start)) * 100);
+      } else if (!down && target > 0) {
+        pct = Math.round((actual / target) * 100);
+      }
+    }
+
+    // 目標まであと何か（達成していない場合）
+    const remain = ok === false ? Math.abs(actual - target) : null;
+
+    return { unit: m.unit || "回", down, autoCount, manual, actual, target, hasTarget, ok, pct, remain };
   }
 
   function currentGoals() {
@@ -746,6 +785,7 @@
       box.innerHTML = `<div class="empty">目標を登録すると、ここで振り返れます。</div>`;
     }
     goals.forEach(g => {
+      const m = (rv.metrics || {})[g.id] || {};
       const item = document.createElement("div");
       item.className = "goal-item";
 
@@ -753,10 +793,42 @@
       title.className = "goal-title";
       title.textContent = g.title;
 
-      const sub = document.createElement("div");
-      sub.className = "muted";
-      const rate = goalRateFor(g.id, keys);
-      sub.textContent = rate === null ? "関連する習慣はありません" : `関連する習慣の達成率 ${rate}%`;
+      // 目標値・単位・実績を入力する行
+      const metric = document.createElement("div");
+      metric.className = "metric";
+      metric.innerHTML = `
+        <select class="sel g-dir" aria-label="目標の向き">
+          <option value="up">増やす</option>
+          <option value="down">減らす</option>
+        </select>
+        <span>目標</span>
+        <input type="number" class="num-input g-target" inputmode="decimal" aria-label="目標値">
+        <input type="text" class="num-input g-unit" maxlength="6" aria-label="単位">
+        <span>実績</span>
+        <input type="number" class="num-input g-actual" inputmode="decimal" aria-label="実績">
+        <span>開始</span>
+        <input type="number" class="num-input g-start" inputmode="decimal" placeholder="任意" aria-label="開始時の値">`;
+      const dirSelect = metric.querySelector(".g-dir");
+      const targetInput = metric.querySelector(".g-target");
+      const unitInput = metric.querySelector(".g-unit");
+      const actualInput = metric.querySelector(".g-actual");
+      const startInput = metric.querySelector(".g-start");
+      dirSelect.value = m.direction || "up";
+      targetInput.value = m.target ?? "";
+      unitInput.value = m.unit || "回";
+      actualInput.value = m.actual ?? "";
+      startInput.value = m.start ?? "";
+
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      const fill = document.createElement("div");
+      fill.className = "g-fill";
+      bar.append(fill);
+
+      const result = document.createElement("div");
+      result.className = "g-result";
+      const auto = document.createElement("div");
+      auto.className = "g-auto muted";
 
       const stars = document.createElement("div");
       stars.className = "stars";
@@ -771,9 +843,23 @@
         stars.append(b);
       }
 
-      item.append(title, sub, stars);
+      item.append(title, metric, bar, result, auto, stars);
       box.append(item);
+
+      // 入力のたびに、保存して達成率を更新する（描き直すと入力が途切れるため、行は作り直さない）
+      const onChange = (field, input, eventName = "input") => input.addEventListener(eventName, () => {
+        setMetric(g.id, field, input.value);
+        paintGoal(item, g, keys);
+        paintScore(keys);
+      });
+      onChange("direction", dirSelect, "change");
+      onChange("target", targetInput);
+      onChange("unit", unitInput);
+      onChange("actual", actualInput);
+      onChange("start", startInput);
+      paintGoal(item, g, keys);
     });
+    paintScore(keys);
 
     document.getElementById("rv-good").value = rv.good || "";
     document.getElementById("rv-issues").value = rv.issues || "";
@@ -785,6 +871,56 @@
     rv.ratings[goalId] = rv.ratings[goalId] === n ? 0 : n;
     save();
     renderReview();
+  }
+
+  function setMetric(goalId, field, value) {
+    const rv = reviewFor(reviewKey());
+    rv.metrics = rv.metrics || {};
+    rv.metrics[goalId] = rv.metrics[goalId] || {};
+    rv.metrics[goalId][field] = value;
+    save();
+  }
+
+  // 目標ごとの達成率・判定・自動の完了回数を表示に反映する
+  function paintGoal(item, goal, keys) {
+    const r = goalResult(goal, keys);
+    const fill = item.querySelector(".g-fill");
+    const result = item.querySelector(".g-result");
+    const auto = item.querySelector(".g-auto");
+    const actualInput = item.querySelector(".g-actual");
+
+    actualInput.placeholder = r.autoCount === null ? "実績" : String(r.autoCount);
+    fill.style.width = `${Math.min(Math.max(r.pct ?? 0, 0), 100)}%`;
+
+    if (!r.hasTarget) {
+      result.textContent = "目標値を入れると、達成率が出ます";
+      result.className = "g-result muted";
+    } else if (r.actual === null) {
+      result.textContent = "実績を入れてください";
+      result.className = "g-result muted";
+    } else {
+      const label = r.ok ? "達成" : r.pct !== null && r.pct >= 50 ? "一部達成" : "未達";
+      const percent = r.pct === null ? "" : `${r.pct}%・`;
+      const rest = r.ok ? "" : `・目標まであと${r.remain}${r.unit}`;
+      result.textContent = `${r.actual} / ${r.target}${r.unit}（${percent}${label}${rest}）`;
+      result.className = "g-result " + (r.ok ? "ok" : "ng");
+    }
+
+    if (r.autoCount === null) {
+      auto.textContent = "関連する習慣がないので、実績は手入力です";
+    } else {
+      auto.textContent = `関連する習慣の完了: ${r.autoCount}${r.unit}` +
+        (r.manual ? "（実績は手入力の値を使っています）" : "（実績として使っています）");
+    }
+  }
+
+  // 目標の達成数（目標値を入れた目標のうち、達成率100%以上の数）
+  function paintScore(keys) {
+    const results = currentGoals().map(g => goalResult(g, keys)).filter(r => r.ok !== null);
+    const achieved = results.filter(r => r.ok).length;
+    document.getElementById("review-score").textContent = results.length === 0
+      ? "目標値と実績を入れると、ここに達成数が出ます"
+      : `目標の達成: ${achieved} / ${results.length}`;
   }
 
   // ---------- 描画: カレンダー ----------
