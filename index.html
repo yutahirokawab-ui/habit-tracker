@@ -16,6 +16,7 @@
     --done: #22a06b;
     --line: #e5e7eb;
     --danger: #d64545;
+    --star: #f0b429;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -27,6 +28,7 @@
       --done: #34c08a;
       --line: #2e323b;
       --danger: #ef6161;
+      --star: #f5c451;
     }
   }
   :root[data-theme="dark"] {
@@ -38,6 +40,7 @@
     --done: #34c08a;
     --line: #2e323b;
     --danger: #ef6161;
+    --star: #f5c451;
   }
 
   * { box-sizing: border-box; }
@@ -67,7 +70,7 @@
   .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 12px; }
   .bar > div { height: 100%; width: 0; background: var(--done); transition: width .3s; }
 
-  /* 習慣リスト */
+  /* 習慣・ToDoのリスト */
   .habit {
     display: flex;
     align-items: center;
@@ -88,6 +91,7 @@
   .habit.done .check { background: var(--done); border-color: var(--done); }
   .habit.done .name { color: var(--muted); text-decoration: line-through; }
   .name { flex: 1; word-break: break-all; }
+  .tag { display: inline-block; margin-left: 6px; font-size: 12px; color: var(--accent); text-decoration: none; }
   .edit-tools { display: none; gap: 6px; }
   .editing .edit-tools { display: flex; }
   .editing .habit { cursor: default; }
@@ -102,6 +106,31 @@
   }
   .mini.del { color: var(--danger); }
   .mini:disabled { opacity: .35; cursor: default; }
+
+  /* 目標 */
+  .goal-item { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .goal-item:last-child { border-bottom: none; }
+  .goal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .goal-title { font-weight: 700; word-break: break-all; }
+  .stars { display: flex; gap: 2px; margin-top: 6px; }
+  .stars button {
+    border: none; background: none; padding: 0 2px;
+    font-size: 22px; line-height: 1; color: var(--line); cursor: pointer;
+  }
+  .stars button.on { color: var(--star); }
+  .field-label { display: block; font-size: 14px; color: var(--muted); margin: 14px 0 4px; }
+  textarea {
+    width: 100%;
+    min-height: 72px;
+    padding: 10px 12px;
+    font-size: 16px;
+    font-family: inherit;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--text);
+    resize: vertical;
+  }
 
   /* ボタン・入力 */
   .btn {
@@ -120,9 +149,20 @@
   }
   .btn.small { padding: 6px 12px; font-size: 14px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .stack { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .stack input[type="text"] { flex: none; width: 100%; }
   input[type="text"] {
     flex: 1 1 0; width: 0; min-width: 0;
     padding: 10px 12px;
+    font-size: 16px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .sel {
+    flex: 1 1 0; width: 0; min-width: 0;
+    padding: 10px 8px;
     font-size: 16px;
     border: 1px solid var(--line);
     border-radius: 10px;
@@ -215,6 +255,16 @@
   <h1 id="today-label">今日</h1>
 
   <section class="card">
+    <h2 id="goal-heading">今年の目標</h2>
+    <div id="goal-list"></div>
+    <form id="goal-form" class="stack">
+      <input type="text" id="goal-title" maxlength="60" placeholder="目標（例: 英語で仕事ができるようになる）">
+      <input type="text" id="goal-why" maxlength="120" placeholder="なぜ大事か（任意）">
+      <button class="btn" type="submit">目標を追加</button>
+    </form>
+  </section>
+
+  <section class="card">
     <div class="cal-head">
       <button class="cal-nav" id="prev-month" aria-label="前の月">‹</button>
       <b id="cal-title"></b>
@@ -241,13 +291,12 @@
       </div>
     </div>
     <div id="habit-list"></div>
-    <div class="row" style="margin-top: 12px;">
-      <form id="add-form" class="row" style="flex: 1; flex-wrap: nowrap; min-width: 0;">
-        <input type="text" id="new-name" maxlength="40" placeholder="新しい習慣を追加（例: 読書）">
-        <input type="number" id="new-minutes" class="num-input" min="1" max="600" inputmode="numeric" placeholder="分">
-        <button class="btn" type="submit" style="flex: none;">追加</button>
-      </form>
-    </div>
+    <form id="add-form" class="row" style="margin-top: 12px;">
+      <input type="text" id="new-name" maxlength="40" placeholder="新しい習慣を追加（例: 読書）" style="flex: 1 1 100%;">
+      <select id="new-goal" class="sel" aria-label="関連する目標"></select>
+      <input type="number" id="new-minutes" class="num-input" min="1" max="600" inputmode="numeric" placeholder="分">
+      <button class="btn" type="submit" style="flex: none;">追加</button>
+    </form>
   </section>
 
   <section class="card">
@@ -276,6 +325,32 @@
   </section>
 
   <section class="card">
+    <h2>3ヶ月ごとの振り返り</h2>
+    <div class="seg" id="review-q">
+      <button data-q="1">1期</button>
+      <button data-q="2">2期</button>
+      <button data-q="3">3期</button>
+      <button data-q="4">4期</button>
+    </div>
+    <div id="review-title" style="font-weight: 700; margin: 12px 0 0;"></div>
+    <div class="summary">
+      <div>習慣の平均 <b id="review-avg">0%</b></div>
+      <div>記録した日 <b id="review-days">0</b>日</div>
+    </div>
+    <div class="chart-box" id="review-chart"></div>
+
+    <h2 style="margin-top: 16px;">目標の振り返り</h2>
+    <div id="review-goals"></div>
+
+    <label class="field-label" for="rv-good">この期間に良かったこと</label>
+    <textarea id="rv-good"></textarea>
+    <label class="field-label" for="rv-issues">うまくいかなかったこと</label>
+    <textarea id="rv-issues"></textarea>
+    <label class="field-label" for="rv-next">次の3ヶ月でやること</label>
+    <textarea id="rv-next"></textarea>
+  </section>
+
+  <section class="card">
     <h2>バックアップ</h2>
     <p class="muted" style="margin: 0 0 12px;">データはこの端末のブラウザに保存されます。機種変更や消去に備えて、時々書き出してください。</p>
     <div class="row">
@@ -300,32 +375,43 @@
 <script>
 (() => {
   const KEY = "habitTracker.v1";
+  const TIMER_KEY = "habitTracker.timer";
   const DAY_MS = 24 * 60 * 60 * 1000;
+  const THIS_YEAR = new Date().getFullYear();
+  const WEEK = ["日", "月", "火", "水", "木", "金", "土"];
 
   // ---------- データ ----------
-  // habits: [{ id, name }]
-  // records: { "2026-11-03": { "habitId": true, ... }, ... }
+  // habits: [{ id, name, minutes?, goalId? }]
+  // records: { "2026-11-03": { "habitId": true, ... } }
+  // todos: { "2026-11-03": [{ id, name, done }] }
+  // goals: [{ id, title, why, year }]
+  // reviews: { "2026-Q4": { good, issues, next, ratings: { goalId: 1〜5 } } }
   let state = load();
   let editing = false;
   let chartDays = 30;
-  // 画面で選んでいる日（初期値は今日）と、カレンダーで表示中の年月
   let selectedKey = null;
   let viewYear = 0;
   let viewMonth = 0;
+  let reviewQuarter = Math.floor(new Date().getMonth() / 3) + 1;
   // タイマー: { habitId, name, key, endAt（動作中の終了時刻）, remainMs（一時停止中の残り時間） }
-  const TIMER_KEY = "habitTracker.timer";
   let timer = loadTimer();
   let audioCtx = null;
 
   function load() {
+    let s = null;
     try {
-      const s = JSON.parse(localStorage.getItem(KEY));
-      if (s && Array.isArray(s.habits) && s.records) {
-        s.todos = s.todos || {};
-        return s;
-      }
+      s = JSON.parse(localStorage.getItem(KEY));
     } catch (e) { /* 読めなければ空から始める */ }
-    return { habits: [], records: {}, todos: {} };
+    if (!s || !Array.isArray(s.habits) || !s.records) s = { habits: [], records: {} };
+    return normalize(s);
+  }
+
+  // 古いデータにも新しい項目を用意する
+  function normalize(s) {
+    s.todos = s.todos || {};
+    s.goals = s.goals || [];
+    s.reviews = s.reviews || {};
+    return s;
   }
 
   function save() {
@@ -336,11 +422,17 @@
     }
   }
 
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
   // ---------- 日付 ----------
   const pad = n => String(n).padStart(2, "0");
   const keyOf = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const todayKey = () => keyOf(new Date());
   const dayAgo = n => keyOf(new Date(Date.now() - n * DAY_MS));
+  const shortLabel = key => {
+    const [, m, d] = key.split("-").map(Number);
+    return `${m}/${d}`;
+  };
 
   // "2026-11-03" → "2026年11月3日(火)"
   function labelOf(key) {
@@ -348,6 +440,19 @@
     return new Date(y, m - 1, d).toLocaleDateString("ja-JP", {
       year: "numeric", month: "long", day: "numeric", weekday: "short",
     });
+  }
+
+  // 四半期（1期: 1〜3月 ...）の、今日までの日付一覧
+  function quarterKeys(q) {
+    const start = new Date(THIS_YEAR, (q - 1) * 3, 1);
+    const end = new Date(THIS_YEAR, q * 3, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const keys = [];
+    for (let d = new Date(start); d <= end && d <= today; d.setDate(d.getDate() + 1)) {
+      keys.push(keyOf(d));
+    }
+    return keys;
   }
 
   // ---------- 計算 ----------
@@ -363,7 +468,41 @@
     return Math.round((doneCount(key) / total) * 100);
   }
 
-  // ---------- 描画 ----------
+  function hasRecord(key) {
+    return Object.keys(state.records[key] || {}).length > 0;
+  }
+
+  // カレンダーの色の濃さ（0: 色なし, 1〜3: 薄い〜濃い）
+  function levelOf(key) {
+    const rate = rateOf(key);
+    if (rate === null || !hasRecord(key)) return 0;
+    if (rate >= 100) return 3;
+    if (rate >= 50) return 2;
+    return rate > 0 ? 1 : 0;
+  }
+
+  // 目標に関連する習慣の、記録のある日の平均達成率（関連する習慣がなければ null）
+  function goalRateFor(goalId, keys) {
+    const habits = state.habits.filter(h => h.goalId === goalId);
+    if (habits.length === 0) return null;
+    const days = keys.filter(hasRecord);
+    if (days.length === 0) return 0;
+    const sum = days.reduce((a, k) => {
+      const rec = state.records[k] || {};
+      return a + habits.filter(h => rec[h.id]).length / habits.length;
+    }, 0);
+    return Math.round((sum / days.length) * 100);
+  }
+
+  function currentGoals() {
+    return state.goals.filter(g => g.year === THIS_YEAR);
+  }
+
+  function goalOf(habit) {
+    return state.goals.find(g => g.id === habit.goalId);
+  }
+
+  // ---------- 描画: 今日の習慣 ----------
   function renderToday() {
     const key = selectedKey;
     const isToday = key === todayKey();
@@ -401,6 +540,13 @@
       const name = document.createElement("span");
       name.className = "name";
       name.textContent = h.name;
+      const goal = goalOf(h);
+      if (goal) {
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = `🎯 ${goal.title}`;
+        name.append(tag);
+      }
 
       row.append(check, name);
 
@@ -411,6 +557,7 @@
           miniButton("▲", i === 0, () => move(i, -1)),
           miniButton("▼", i === total - 1, () => move(i, 1)),
           miniButton("⏱", false, () => setMinutes(h.id)),
+          miniButton("🎯", false, () => setGoal(h.id)),
           miniButton("✕", false, () => remove(h.id), "del")
         );
         row.append(tools);
@@ -431,27 +578,92 @@
     return b;
   }
 
-  function renderChart() {
-    const labels = [];
-    const values = [];
-    for (let n = chartDays - 1; n >= 0; n--) {
-      const key = dayAgo(n);
-      const d = new Date(Date.now() - n * DAY_MS);
-      labels.push(`${d.getMonth() + 1}/${d.getDate()}`);
-      values.push(rateOf(key) ?? 0);
+  // ---------- 描画: ToDo ----------
+  function renderTodos() {
+    const key = selectedKey;
+    const todos = state.todos[key] || [];
+    document.getElementById("todo-title").textContent = key === todayKey() ? "今日のToDo" : "この日のToDo";
+
+    const list = document.getElementById("todo-list");
+    list.innerHTML = "";
+    if (todos.length === 0) {
+      list.innerHTML = `<div class="empty">ToDoはまだありません。</div>`;
+      return;
     }
+    todos.forEach(t => {
+      const row = document.createElement("div");
+      row.className = "habit" + (t.done ? " done" : "");
 
-    const recorded = values.filter((_, i) => {
-      const key = dayAgo(chartDays - 1 - i);
-      return state.records[key] && Object.keys(state.records[key]).length > 0;
+      const check = document.createElement("span");
+      check.className = "check";
+      check.textContent = t.done ? "✓" : "";
+
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = t.name;
+
+      row.append(check, name, miniButton("✕", false, () => removeTodo(t.id), "del"));
+      row.addEventListener("click", () => toggleTodo(t.id));
+      list.append(row);
     });
-    const avg = recorded.length
-      ? Math.round(recorded.reduce((a, b) => a + b, 0) / recorded.length)
-      : 0;
-    document.getElementById("avg").textContent = `${avg}%`;
-    document.getElementById("recorded").textContent = recorded.length;
+  }
 
-    // 外部ライブラリを使わず、SVGで折れ線グラフを描く
+  // ---------- 描画: 目標 ----------
+  function renderGoals() {
+    const list = document.getElementById("goal-list");
+    const goals = currentGoals();
+    list.innerHTML = "";
+    if (goals.length === 0) {
+      list.innerHTML = `<div class="empty">今年の目標を登録しましょう。</div>`;
+      return;
+    }
+    goals.forEach(g => {
+      const item = document.createElement("div");
+      item.className = "goal-item";
+
+      const head = document.createElement("div");
+      head.className = "goal-head";
+      const title = document.createElement("div");
+      title.className = "goal-title";
+      title.textContent = g.title;
+      head.append(title, miniButton("✕", false, () => removeGoal(g.id), "del"));
+      item.append(head);
+
+      if (g.why) {
+        const why = document.createElement("div");
+        why.className = "muted";
+        why.textContent = g.why;
+        item.append(why);
+      }
+      list.append(item);
+    });
+  }
+
+  // 目標の選択肢（習慣の追加欄）を、今年の目標で作り直す
+  function renderGoalOptions() {
+    const select = document.getElementById("new-goal");
+    const prev = select.value;
+    select.innerHTML = "";
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = "目標なし";
+    select.append(none);
+    currentGoals().forEach(g => {
+      const opt = document.createElement("option");
+      opt.value = g.id;
+      opt.textContent = g.title;
+      select.append(opt);
+    });
+    select.value = prev;
+  }
+
+  // ---------- 描画: 達成率の推移 ----------
+  // labels と values を、SVGの折れ線グラフとして el に描く
+  function drawLine(el, labels, values) {
+    if (values.length === 0) {
+      el.innerHTML = `<div class="empty">この期間はまだ始まっていません</div>`;
+      return;
+    }
     const W = 320, H = 220, PL = 36, PR = 10, PT = 10, PB = 26;
     const x = i => PL + (values.length === 1 ? (W - PL - PR) / 2 : i * (W - PL - PR) / (values.length - 1));
     const y = v => PT + (1 - v / 100) * (H - PT - PB);
@@ -470,25 +682,104 @@
     const points = values.map((v, i) => `${x(i)},${y(v)}`).join(" ");
     svg += `<polyline points="${points}" fill="none" stroke-width="2" stroke-linejoin="round" style="stroke: var(--accent)"/>`;
     values.forEach((v, i) => {
-      svg += `<circle cx="${x(i)}" cy="${y(v)}" r="3" style="fill: var(--accent)"/>`;
+      svg += `<circle cx="${x(i)}" cy="${y(v)}" r="${values.length > 40 ? 1.5 : 3}" style="fill: var(--accent)"/>`;
     });
     svg += `</svg>`;
-    document.getElementById("chart-box").innerHTML = svg;
+    el.innerHTML = svg;
   }
 
-  function hasRecord(key) {
-    return Object.keys(state.records[key] || {}).length > 0;
+  function renderChart() {
+    const keys = [];
+    for (let n = chartDays - 1; n >= 0; n--) keys.push(dayAgo(n));
+
+    const recorded = keys.filter(hasRecord);
+    const avg = recorded.length
+      ? Math.round(recorded.reduce((a, k) => a + (rateOf(k) ?? 0), 0) / recorded.length)
+      : 0;
+    document.getElementById("avg").textContent = `${avg}%`;
+    document.getElementById("recorded").textContent = recorded.length;
+
+    drawLine(document.getElementById("chart-box"), keys.map(shortLabel), keys.map(k => rateOf(k) ?? 0));
   }
 
-  // カレンダーの色の濃さ（0: 色なし, 1〜3: 薄い〜濃い）
-  function levelOf(key) {
-    const rate = rateOf(key);
-    if (rate === null || !hasRecord(key)) return 0;
-    if (rate >= 100) return 3;
-    if (rate >= 50) return 2;
-    return rate > 0 ? 1 : 0;
+  // ---------- 描画: 3ヶ月ごとの振り返り ----------
+  function reviewKey() {
+    return `${THIS_YEAR}-Q${reviewQuarter}`;
   }
 
+  function reviewFor(key) {
+    state.reviews[key] = state.reviews[key] || { ratings: {} };
+    return state.reviews[key];
+  }
+
+  function renderReview() {
+    const keys = quarterKeys(reviewQuarter);
+    document.querySelectorAll("#review-q button").forEach(btn => {
+      btn.classList.toggle("on", Number(btn.dataset.q) === reviewQuarter);
+    });
+
+    const startMonth = (reviewQuarter - 1) * 3 + 1;
+    document.getElementById("review-title").textContent =
+      `${THIS_YEAR}年 ${reviewQuarter}期（${startMonth}〜${startMonth + 2}月）`;
+
+    const recorded = keys.filter(hasRecord);
+    const avg = recorded.length
+      ? Math.round(recorded.reduce((a, k) => a + (rateOf(k) ?? 0), 0) / recorded.length)
+      : 0;
+    document.getElementById("review-avg").textContent = `${avg}%`;
+    document.getElementById("review-days").textContent = recorded.length;
+    drawLine(document.getElementById("review-chart"), keys.map(shortLabel), keys.map(k => rateOf(k) ?? 0));
+
+    const rv = state.reviews[reviewKey()] || { ratings: {} };
+    const box = document.getElementById("review-goals");
+    box.innerHTML = "";
+    const goals = currentGoals();
+    if (goals.length === 0) {
+      box.innerHTML = `<div class="empty">目標を登録すると、ここで振り返れます。</div>`;
+    }
+    goals.forEach(g => {
+      const item = document.createElement("div");
+      item.className = "goal-item";
+
+      const title = document.createElement("div");
+      title.className = "goal-title";
+      title.textContent = g.title;
+
+      const sub = document.createElement("div");
+      sub.className = "muted";
+      const rate = goalRateFor(g.id, keys);
+      sub.textContent = rate === null ? "関連する習慣はありません" : `関連する習慣の達成率 ${rate}%`;
+
+      const stars = document.createElement("div");
+      stars.className = "stars";
+      const current = (rv.ratings && rv.ratings[g.id]) || 0;
+      for (let n = 1; n <= 5; n++) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = "★";
+        b.setAttribute("aria-label", `進み具合 ${n}`);
+        if (current >= n) b.classList.add("on");
+        b.addEventListener("click", () => setRating(g.id, n));
+        stars.append(b);
+      }
+
+      item.append(title, sub, stars);
+      box.append(item);
+    });
+
+    document.getElementById("rv-good").value = rv.good || "";
+    document.getElementById("rv-issues").value = rv.issues || "";
+    document.getElementById("rv-next").value = rv.next || "";
+  }
+
+  function setRating(goalId, n) {
+    const rv = reviewFor(reviewKey());
+    rv.ratings[goalId] = rv.ratings[goalId] === n ? 0 : n;
+    save();
+    renderReview();
+  }
+
+  // ---------- 描画: カレンダー ----------
   function renderCalendar() {
     const now = new Date();
     const todayStr = todayKey();
@@ -502,7 +793,7 @@
 
     const grid = document.getElementById("cal-grid");
     grid.innerHTML = "";
-    ["日", "月", "火", "水", "木", "金", "土"].forEach(w => {
+    WEEK.forEach(w => {
       const el = document.createElement("div");
       el.className = "cal-wd";
       el.textContent = w;
@@ -652,77 +943,7 @@
     return b;
   }
 
-  function setMinutes(id) {
-    const h = state.habits.find(x => x.id === id);
-    if (!h) return;
-    const input = prompt(`「${h.name}」の時間（分）。空欄にすると時間なしに戻します。`, h.minutes || "");
-    if (input === null) return;
-    if (input.trim() === "") {
-      delete h.minutes;
-    } else {
-      const n = parseInt(input, 10);
-      if (!(n >= 1 && n <= 600)) {
-        alert("1〜600の数字を入れてください。");
-        return;
-      }
-      h.minutes = n;
-    }
-    save();
-    render();
-  }
-
-  // ---------- ToDo（その日限りのタスク・達成率には含めない） ----------
-  function renderTodos() {
-    const key = selectedKey;
-    const todos = state.todos[key] || [];
-    document.getElementById("todo-title").textContent = key === todayKey() ? "今日のToDo" : "この日のToDo";
-
-    const list = document.getElementById("todo-list");
-    list.innerHTML = "";
-    if (todos.length === 0) {
-      list.innerHTML = `<div class="empty">ToDoはまだありません。</div>`;
-      return;
-    }
-    todos.forEach(t => {
-      const row = document.createElement("div");
-      row.className = "habit" + (t.done ? " done" : "");
-
-      const check = document.createElement("span");
-      check.className = "check";
-      check.textContent = t.done ? "✓" : "";
-
-      const name = document.createElement("span");
-      name.className = "name";
-      name.textContent = t.name;
-
-      row.append(check, name, miniButton("✕", false, () => removeTodo(t.id), "del"));
-      row.addEventListener("click", () => toggleTodo(t.id));
-      list.append(row);
-    });
-  }
-
-  function toggleTodo(id) {
-    const t = (state.todos[selectedKey] || []).find(x => x.id === id);
-    if (!t) return;
-    t.done = !t.done;
-    save();
-    render();
-  }
-
-  function removeTodo(id) {
-    state.todos[selectedKey] = (state.todos[selectedKey] || []).filter(x => x.id !== id);
-    save();
-    render();
-  }
-
-  function render() {
-    renderCalendar();
-    renderToday();
-    renderTodos();
-    renderChart();
-  }
-
-  // ---------- 操作 ----------
+  // ---------- 操作: 習慣 ----------
   function toggle(id) {
     const key = selectedKey;
     state.records[key] = state.records[key] || {};
@@ -752,18 +973,117 @@
     render();
   }
 
+  function setMinutes(id) {
+    const h = state.habits.find(x => x.id === id);
+    if (!h) return;
+    const input = prompt(`「${h.name}」の時間（分）。空欄にすると時間なしに戻します。`, h.minutes || "");
+    if (input === null) return;
+    if (input.trim() === "") {
+      delete h.minutes;
+    } else {
+      const n = parseInt(input, 10);
+      if (!(n >= 1 && n <= 600)) {
+        alert("1〜600の数字を入れてください。");
+        return;
+      }
+      h.minutes = n;
+    }
+    save();
+    render();
+  }
+
+  // 習慣を目標に関連づける（番号で選ぶ）
+  function setGoal(id) {
+    const h = state.habits.find(x => x.id === id);
+    const goals = currentGoals();
+    if (!h) return;
+    if (goals.length === 0) {
+      alert("先に「今年の目標」を登録してください。");
+      return;
+    }
+    const list = goals.map((g, i) => `${i + 1}: ${g.title}`).join("\n");
+    const input = prompt(`「${h.name}」を関連づける目標の番号を入れてください。\n0: 目標なし\n${list}`, "");
+    if (input === null || input.trim() === "") return;
+    const n = parseInt(input, 10);
+    if (n === 0) {
+      delete h.goalId;
+    } else if (n >= 1 && n <= goals.length) {
+      h.goalId = goals[n - 1].id;
+    } else {
+      alert("番号が正しくありません。");
+      return;
+    }
+    save();
+    render();
+  }
+
+  // ---------- 操作: 目標 ----------
+  function removeGoal(id) {
+    const g = state.goals.find(x => x.id === id);
+    if (!g || !confirm(`目標「${g.title}」を削除しますか？ 関連していた習慣は「目標なし」になります。`)) return;
+    state.goals = state.goals.filter(x => x.id !== id);
+    state.habits.forEach(h => {
+      if (h.goalId === id) delete h.goalId;
+    });
+    save();
+    render();
+  }
+
+  // ---------- 操作: ToDo ----------
+  function toggleTodo(id) {
+    const t = (state.todos[selectedKey] || []).find(x => x.id === id);
+    if (!t) return;
+    t.done = !t.done;
+    save();
+    render();
+  }
+
+  function removeTodo(id) {
+    state.todos[selectedKey] = (state.todos[selectedKey] || []).filter(x => x.id !== id);
+    save();
+    render();
+  }
+
+  function render() {
+    renderCalendar();
+    renderGoals();
+    renderGoalOptions();
+    renderToday();
+    renderTodos();
+    renderChart();
+    renderReview();
+    renderTimer();
+  }
+
+  // ---------- フォーム・ボタン ----------
+  document.getElementById("goal-form").addEventListener("submit", e => {
+    e.preventDefault();
+    const titleInput = document.getElementById("goal-title");
+    const whyInput = document.getElementById("goal-why");
+    const title = titleInput.value.trim();
+    if (!title) return;
+    state.goals.push({ id: uid(), title, why: whyInput.value.trim(), year: THIS_YEAR });
+    titleInput.value = "";
+    whyInput.value = "";
+    save();
+    render();
+  });
+
   document.getElementById("add-form").addEventListener("submit", e => {
     e.preventDefault();
     const input = document.getElementById("new-name");
     const name = input.value.trim();
     if (!name) return;
     const minutesInput = document.getElementById("new-minutes");
-    const habit = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name };
+    const goalSelect = document.getElementById("new-goal");
+    const habit = { id: uid(), name };
     const minutes = parseInt(minutesInput.value, 10);
     if (minutes >= 1 && minutes <= 600) habit.minutes = minutes;
+    if (goalSelect.value) habit.goalId = goalSelect.value;
     state.habits.push(habit);
     input.value = "";
     minutesInput.value = "";
+    goalSelect.value = "";
     save();
     render();
   });
@@ -774,7 +1094,7 @@
     const name = input.value.trim();
     if (!name) return;
     state.todos[selectedKey] = state.todos[selectedKey] || [];
-    state.todos[selectedKey].push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, done: false });
+    state.todos[selectedKey].push({ id: uid(), name, done: false });
     input.value = "";
     save();
     render();
@@ -798,6 +1118,24 @@
     });
   });
 
+  document.querySelectorAll("#review-q button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      reviewQuarter = Number(btn.dataset.q);
+      renderReview();
+    });
+  });
+
+  // 振り返りの文章は入力するたびに保存する（再描画すると入力が途切れるため、描画は行わない）
+  [["rv-good", "good"], ["rv-issues", "issues"], ["rv-next", "next"]].forEach(([id, field]) => {
+    document.getElementById(id).addEventListener("input", e => {
+      reviewFor(reviewKey())[field] = e.target.value;
+      save();
+    });
+  });
+
+  document.getElementById("timer-pause").addEventListener("click", togglePause);
+  document.getElementById("timer-stop").addEventListener("click", stopTimer);
+
   document.getElementById("export").addEventListener("click", () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
@@ -816,8 +1154,7 @@
       const data = JSON.parse(await file.text());
       if (!Array.isArray(data.habits) || typeof data.records !== "object") throw new Error("format");
       if (!confirm("現在のデータを読み込んだデータで置き換えます。よろしいですか？")) return;
-      data.todos = data.todos || {};
-      state = data;
+      state = normalize(data);
       save();
       render();
     } catch (e) {
@@ -843,8 +1180,6 @@
   viewMonth = new Date().getMonth();
   render();
 
-  document.getElementById("timer-pause").addEventListener("click", togglePause);
-  document.getElementById("timer-stop").addEventListener("click", stopTimer);
   setInterval(() => { if (timer) checkTimer(); }, 500);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) checkTimer(); });
   checkTimer();
