@@ -195,7 +195,8 @@
     cursor: pointer;
   }
   .cal-nav:disabled { opacity: .35; cursor: default; }
-  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .cal-grid > * { min-width: 0; justify-self: stretch; }
   .cal-wd { text-align: center; font-size: 12px; color: var(--muted); padding: 2px 0; }
   .cal-day {
     display: block;
@@ -365,6 +366,8 @@
     </div>
   </section>
 </div>
+
+<p class="muted" style="text-align: center; margin: 24px 0 0; font-size: 12px;">版: 2026-11-03 カレンダー修正 v5</p>
 
 <div id="timer-panel" hidden>
   <div>
